@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Friend {
+  id           String        @id @default(uuid())
+  name         String
+  friendCode   String        @unique @default(cuid())
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  participants Participant[]
+
+  @@map("friends")
+}
+
+model Session {
+  id           String        @id @default(uuid())
+  name         String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  participants Participant[]
+  items        Item[]
+
+  @@map("sessions")
+}
+
+model Participant {
+  id         String      @id @default(uuid())
+  sessionId  String
+  friendId   String?
+  name       String
+  createdAt  DateTime    @default(now())
+  session    Session     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  friend     Friend?     @relation(fields: [friendId], references: [id], onDelete: SetNull)
+  itemsPaid  Item[]      @relation("PaidBy")
+  itemSplits ItemSplit[]
+
+  @@index([sessionId])
+  @@index([friendId])
+  @@map("participants")
+}
+
+model Item {
+  id          String      @id @default(uuid())
+  sessionId   String
+  description String
+  totalAmount Float
+  paidById    String
+  createdAt   DateTime    @default(now())
+  session     Session     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  paidBy      Participant @relation("PaidBy", fields: [paidById], references: [id])
+  splits      ItemSplit[]
+
+  @@index([sessionId])
+  @@map("items")
+}
+
+model ItemSplit {
+  id            String      @id @default(uuid())
+  itemId        String
+  participantId String
+  share         Float
+  createdAt     DateTime    @default(now())
+  item          Item        @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  participant   Participant @relation(fields: [participantId], references: [id])
+
+  @@index([itemId])
+  @@index([participantId])
+  @@map("item_splits")
+}
