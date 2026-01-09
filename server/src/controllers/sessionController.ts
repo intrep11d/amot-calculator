@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma';
+import { serializeDecimals } from '../utils/serialization';
 
 export const createSession = async (req: Request, res: Response) => {
   try {
@@ -66,7 +67,7 @@ export const getSessionById = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    res.json(session);
+    res.json(serializeDecimals(session));
   } catch (error) {
     console.error('Error fetching session:', error);
     res.status(500).json({ error: 'Failed to fetch session' });

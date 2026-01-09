@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma';
+import { serializeDecimals } from '../utils/serialization';
 
 export const addItem = async (req: Request, res: Response) => {
   try {
@@ -52,7 +53,7 @@ export const addItem = async (req: Request, res: Response) => {
       },
     });
 
-    res.status(201).json(item);
+    res.status(201).json(serializeDecimals(item));
   } catch (error) {
     console.error('Error adding item:', error);
     res.status(500).json({ error: 'Failed to add item' });
@@ -76,7 +77,7 @@ export const getItems = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    res.json(items);
+    res.json(serializeDecimals(items));
   } catch (error) {
     console.error('Error fetching items:', error);
     res.status(500).json({ error: 'Failed to fetch items' });
@@ -138,7 +139,7 @@ export const updateItem = async (req: Request, res: Response) => {
       },
     });
 
-    res.json(item);
+    res.json(serializeDecimals(item));
   } catch (error) {
     console.error('Error updating item:', error);
     res.status(500).json({ error: 'Failed to update item' });

@@ -1,117 +1,42 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma';
-
-interface Balance {
-  [participantId: string]: {
-    name: string;
-    balance: number;
-    totalPaid: number;
-    totalOwed: number;
-  };
-}
-
-interface Debt {
-  from: string;
-  fromName: string;
-  to: string;
-  toName: string;
-  amount: number;
-}
+import { calculateNetBalances } from '../services/balanceCalculator';
+import { simplifyDebts } from '../services/debtSimplifier';
 
 export const getSettlements = async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params;
 
+    // Verify session exists
     const session = await prisma.session.findUnique({
       where: { id: sessionId },
-      include: {
-        participants: true,
-        items: {
-          include: {
-            paidBy: true,
-            splits: {
-              include: {
-                participant: true,
-              },
-            },
-          },
-        },
-      },
     });
 
     if (!session) {
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    const balances: Balance = {};
+    // Calculate balances using our new service
+    const balances = await calculateNetBalances(sessionId);
 
-    session.participants.forEach((participant) => {
-      balances[participant.id] = {
-        name: participant.name,
-        balance: 0,
-        totalPaid: 0,
-        totalOwed: 0,
-      };
-    });
+    // Simplify debts using greedy algorithm
+    const debtsCalculated = simplifyDebts(balances);
 
-    session.items.forEach((item) => {
-      if (balances[item.paidById]) {
-        balances[item.paidById].balance += item.totalAmount;
-        balances[item.paidById].totalPaid += item.totalAmount;
-      }
+    // Convert to API response format
+    const debts = debtsCalculated.map((debt) => ({
+      from: debt.fromParticipantId,
+      fromName: debt.fromName,
+      to: debt.toParticipantId,
+      toName: debt.toName,
+      amount: Number(debt.amount.toFixed(2)),
+    }));
 
-      item.splits.forEach((split) => {
-        if (balances[split.participantId]) {
-          balances[split.participantId].balance -= split.share;
-          balances[split.participantId].totalOwed += split.share;
-        }
-      });
-    });
-
-    const debts: Debt[] = [];
-
-    const creditors = Object.entries(balances)
-      .filter(([, data]) => data.balance > 0.01)
-      .map(([id, data]) => ({ id, ...data }))
-      .sort((a, b) => b.balance - a.balance);
-
-    const debtors = Object.entries(balances)
-      .filter(([, data]) => data.balance < -0.01)
-      .map(([id, data]) => ({ id, ...data }))
-      .sort((a, b) => a.balance - b.balance);
-
-    let i = 0;
-    let j = 0;
-
-    while (i < creditors.length && j < debtors.length) {
-      const creditor = creditors[i];
-      const debtor = debtors[j];
-
-      const amount = Math.min(creditor.balance, Math.abs(debtor.balance));
-
-      if (amount > 0.01) {
-        debts.push({
-          from: debtor.id,
-          fromName: debtor.name,
-          to: creditor.id,
-          toName: creditor.name,
-          amount: Number(amount.toFixed(2)),
-        });
-      }
-
-      creditor.balance -= amount;
-      debtor.balance += amount;
-
-      if (creditor.balance < 0.01) i++;
-      if (Math.abs(debtor.balance) < 0.01) j++;
-    }
-
-    const participantSummaries = Object.entries(balances).map(([id, data]) => ({
-      participantId: id,
-      name: data.name,
-      totalPaid: Number(data.totalPaid.toFixed(2)),
-      totalOwed: Number(data.totalOwed.toFixed(2)),
-      netBalance: Number((data.totalPaid - data.totalOwed).toFixed(2)),
+    const participantSummaries = balances.map((balance) => ({
+      participantId: balance.participantId,
+      name: balance.participantName,
+      totalPaid: Number(balance.totalPaid.toFixed(2)),
+      totalOwed: Number(balance.totalOwed.toFixed(2)),
+      netBalance: Number(balance.netBalance.toFixed(2)),
     }));
 
     res.json({

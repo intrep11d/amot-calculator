@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma';
+import { calculateFriendSettlement } from '../services/friendAggregator';
 
 export const createFriend = async (req: Request, res: Response) => {
   try {
@@ -87,112 +88,64 @@ export const getFriendBalance = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Friend not found' });
     }
 
-    // Get all participants for this friend across all sessions
-    const participants = await prisma.participant.findMany({
-      where: { friendId: friend.id },
-      include: {
-        session: true,
-        itemsPaid: {
-          include: {
-            splits: true,
-          },
-        },
-        itemSplits: {
-          include: {
-            item: {
-              include: {
-                paidBy: {
-                  include: {
-                    friend: true,
-                  },
-                },
-              },
-            },
-            participant: {
-              include: {
-                friend: true,
-              },
-            },
-          },
-        },
-      },
-    });
+    // Use our new friend aggregation service
+    const settlement = await calculateFriendSettlement(friend.id);
 
-    // Calculate balance per session
-    const sessionBalances = participants.map((participant) => {
-      let balance = 0;
+    // Transform response to match frontend expectations
+    // Frontend expects: { netBalance, byFriend[], bySession[] }
 
-      // Add what they paid
-      participant.itemsPaid.forEach((item) => {
-        balance += item.totalAmount;
-      });
+    // 1. Build byFriend array (combines owesTo and owedBy)
+    const byFriend: Array<{ friendId: string; friendName: string; amount: number }> = [];
 
-      // Subtract what they owe
-      participant.itemSplits.forEach((split) => {
-        balance -= split.share;
-      });
-
-      return {
-        sessionId: participant.sessionId,
-        sessionName: participant.session.name,
-        balance,
-      };
-    });
-
-    // Calculate net balance
-    const netBalance = sessionBalances.reduce((sum, s) => sum + s.balance, 0);
-
-    // Calculate by-friend breakdown (aggregate across sessions)
-    const byFriendMap = new Map<string, { name: string; amount: number }>();
-
-    participants.forEach((participant) => {
-      // Process items they paid for
-      participant.itemsPaid.forEach((item) => {
-        item.splits.forEach((split) => {
-          // Find who this split belongs to
-          const splitParticipant = participants.find(
-            (p) => p.id === split.participantId
-          );
-
-          if (splitParticipant && splitParticipant.friendId) {
-            const key = splitParticipant.friendId;
-            const existing = byFriendMap.get(key) || {
-              name: splitParticipant.name,
-              amount: 0,
-            };
-            // They are owed this amount
-            existing.amount += split.share;
-            byFriendMap.set(key, existing);
-          }
-        });
-      });
-
-      // Process items they owe
-      participant.itemSplits.forEach((split) => {
-        const payer = split.item.paidBy;
-        if (payer.friendId && payer.friendId !== friend.id) {
-          const key = payer.friendId;
-          const existing = byFriendMap.get(key) || {
-            name: payer.name,
-            amount: 0,
-          };
-          // They owe this amount
-          existing.amount -= split.share;
-          byFriendMap.set(key, existing);
-        }
+    // Add people you owe (negative amounts)
+    settlement.owesTo.forEach((debt) => {
+      byFriend.push({
+        friendId: debt.toFriendId,
+        friendName: debt.toFriendName,
+        amount: -Number(debt.amount.toFixed(2)), // Negative because you owe them
       });
     });
 
-    const byFriend = Array.from(byFriendMap.entries()).map(([friendId, data]) => ({
-      friendId,
-      friendName: data.name,
-      amount: data.amount,
+    // Add people who owe you (positive amounts)
+    settlement.owedBy.forEach((debt) => {
+      byFriend.push({
+        friendId: debt.fromFriendId,
+        friendName: debt.fromFriendName,
+        amount: Number(debt.amount.toFixed(2)), // Positive because they owe you
+      });
+    });
+
+    // 2. Build bySession array (aggregate session breakdowns)
+    const sessionMap = new Map<string, { sessionName: string; balance: number }>();
+
+    // Subtract amounts from sessions where you owe
+    settlement.owesTo.forEach((debt) => {
+      debt.sessionBreakdown.forEach((sb) => {
+        const existing = sessionMap.get(sb.sessionId) || { sessionName: sb.sessionName, balance: 0 };
+        existing.balance -= Number(sb.amount.toFixed(2)); // You owe, so negative
+        sessionMap.set(sb.sessionId, existing);
+      });
+    });
+
+    // Add amounts from sessions where you're owed
+    settlement.owedBy.forEach((debt) => {
+      debt.sessionBreakdown.forEach((sb) => {
+        const existing = sessionMap.get(sb.sessionId) || { sessionName: sb.sessionName, balance: 0 };
+        existing.balance += Number(sb.amount.toFixed(2)); // They owe you, so positive
+        sessionMap.set(sb.sessionId, existing);
+      });
+    });
+
+    const bySession = Array.from(sessionMap.entries()).map(([sessionId, data]) => ({
+      sessionId,
+      sessionName: data.sessionName,
+      balance: Number(data.balance.toFixed(2)), // Round to 2 decimal places
     }));
 
     res.json({
-      netBalance,
-      bySession: sessionBalances,
+      netBalance: Number(settlement.netBalance.toFixed(2)),
       byFriend,
+      bySession,
     });
   } catch (error) {
     console.error('Error calculating friend balance:', error);

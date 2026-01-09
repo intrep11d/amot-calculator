@@ -6,13 +6,21 @@ datasource db {
   provider = "postgresql"
 }
 
+enum SplitType {
+  EQUAL       // Split equally among participants
+  PERCENTAGE  // Split by percentage (must sum to 100%)
+  EXACT       // Exact amount specified (must sum to total)
+}
+
 model Friend {
-  id           String        @id @default(uuid())
-  name         String
-  friendCode   String        @unique @default(cuid())
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  participants Participant[]
+  id               String          @id @default(uuid())
+  name             String
+  friendCode       String          @unique @default(cuid())
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  participants     Participant[]
+  paymentsOwed     PaymentRecord[] @relation("PaymentsOwed")
+  paymentsReceived PaymentRecord[] @relation("PaymentsReceived")
 
   @@map("friends")
 }
@@ -29,15 +37,16 @@ model Session {
 }
 
 model Participant {
-  id         String      @id @default(uuid())
-  sessionId  String
-  friendId   String?
-  name       String
-  createdAt  DateTime    @default(now())
-  session    Session     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  friend     Friend?     @relation(fields: [friendId], references: [id], onDelete: SetNull)
-  itemsPaid  Item[]      @relation("PaidBy")
-  itemSplits ItemSplit[]
+  id              String            @id @default(uuid())
+  sessionId       String
+  friendId        String?
+  name            String
+  createdAt       DateTime          @default(now())
+  session         Session           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  friend          Friend?           @relation(fields: [friendId], references: [id], onDelete: SetNull)
+  itemsPaid       Item[]            @relation("PaidBy")
+  itemSplits      ItemSplit[]
+  expensePayments ExpensePayment[]
 
   @@index([sessionId])
   @@index([friendId])
@@ -45,15 +54,16 @@ model Participant {
 }
 
 model Item {
-  id          String      @id @default(uuid())
+  id          String            @id @default(uuid())
   sessionId   String
   description String
-  totalAmount Float
-  paidById    String
-  createdAt   DateTime    @default(now())
-  session     Session     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  paidBy      Participant @relation("PaidBy", fields: [paidById], references: [id])
+  totalAmount Decimal           @db.Decimal(10, 2)
+  paidById    String?
+  createdAt   DateTime          @default(now())
+  session     Session           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  paidBy      Participant?      @relation("PaidBy", fields: [paidById], references: [id])
   splits      ItemSplit[]
+  payments    ExpensePayment[]
 
   @@index([sessionId])
   @@map("items")
@@ -63,7 +73,9 @@ model ItemSplit {
   id            String      @id @default(uuid())
   itemId        String
   participantId String
-  share         Float
+  splitType     SplitType   @default(EXACT)
+  share         Decimal     @db.Decimal(10, 2)
+  percentage    Decimal?    @db.Decimal(5, 2)
   createdAt     DateTime    @default(now())
   item          Item        @relation(fields: [itemId], references: [id], onDelete: Cascade)
   participant   Participant @relation(fields: [participantId], references: [id])
@@ -71,4 +83,33 @@ model ItemSplit {
   @@index([itemId])
   @@index([participantId])
   @@map("item_splits")
+}
+
+model ExpensePayment {
+  id            String      @id @default(uuid())
+  itemId        String
+  participantId String
+  amountPaid    Decimal     @db.Decimal(10, 2)
+  createdAt     DateTime    @default(now())
+  item          Item        @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  participant   Participant @relation(fields: [participantId], references: [id])
+
+  @@index([itemId])
+  @@index([participantId])
+  @@map("expense_payments")
+}
+
+model PaymentRecord {
+  id               String   @id @default(uuid())
+  debtorFriendId   String
+  creditorFriendId String
+  amount           Decimal  @db.Decimal(10, 2)
+  markedPaidAt     DateTime @default(now())
+  note             String?
+  debtor           Friend   @relation("PaymentsOwed", fields: [debtorFriendId], references: [id])
+  creditor         Friend   @relation("PaymentsReceived", fields: [creditorFriendId], references: [id])
+
+  @@index([debtorFriendId])
+  @@index([creditorFriendId])
+  @@map("payment_records")
 }

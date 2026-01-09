@@ -82,12 +82,22 @@ export interface CreateItemData {
   }[];
 }
 
+/**
+ * Represents debt with a specific friend
+ * - Positive amount: Friend owes you money
+ * - Negative amount: You owe friend money
+ */
 export interface ByFriendDebt {
   friendId: string;
   friendName: string;
   amount: number;
 }
 
+/**
+ * Represents net balance for a specific session
+ * - Positive balance: You are owed money in this session
+ * - Negative balance: You owe money in this session
+ */
 export interface BySessionBalance {
   sessionId: string;
   sessionName: string;
