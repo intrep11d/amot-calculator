@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { sessionApi, participantApi, itemApi, settlementApi } from '../services/api';
+import { sessionApi, participantApi, itemApi, settlementApi, groupApi } from '../services/api';
 import type { SessionDetail, Participant, Item, Settlement } from '../types';
 
 function SessionPage() {
@@ -91,6 +91,29 @@ function SessionPage() {
     }
   };
 
+  const handleQuickAddGroupMembers = async () => {
+    if (!id || !session?.groupId) return;
+
+    if (!confirm('Add all group members as participants?')) return;
+
+    try {
+      const groupResponse = await groupApi.getById(session.groupId);
+      const group = groupResponse.data;
+
+      await Promise.all(
+        group.members.map((member) =>
+          participantApi.create(id, { friendCode: member.friend.friendCode })
+        )
+      );
+
+      loadSession();
+      setError('');
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to add group members');
+      console.error(err);
+    }
+  };
+
   const handleEditItem = (item: Item) => {
     setEditingItem(item);
     setShowItemForm(true);
@@ -130,7 +153,17 @@ function SessionPage() {
           >
             ← Back to sessions
           </button>
-          <h1 className="text-3xl font-bold text-gray-900">{session.name}</h1>
+          <div className="flex items-center gap-3 mb-2">
+            <h1 className="text-3xl font-bold text-gray-900">{session.name}</h1>
+            {session.group && (
+              <button
+                onClick={() => navigate(`/group/${session.group!.id}`)}
+                className="px-3 py-1 bg-purple-100 text-purple-700 text-sm rounded hover:bg-purple-200 transition"
+              >
+                {session.group.name}
+              </button>
+            )}
+          </div>
         </div>
 
         {error && (
@@ -141,7 +174,17 @@ function SessionPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold mb-4">Participants</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Participants</h2>
+              {session.groupId && (
+                <button
+                  onClick={handleQuickAddGroupMembers}
+                  className="text-sm bg-purple-600 text-white px-3 py-1 rounded hover:bg-purple-700 transition"
+                >
+                  Quick-Add Group
+                </button>
+              )}
+            </div>
             <form onSubmit={handleAddParticipant} className="mb-4">
               <div className="flex gap-2 mb-2">
                 <button

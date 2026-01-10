@@ -4,14 +4,25 @@ import { serializeDecimals } from '../utils/serialization';
 
 export const createSession = async (req: Request, res: Response) => {
   try {
-    const { name } = req.body;
+    const { name, groupId } = req.body;
 
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'Session name is required' });
     }
 
+    // If groupId is provided, verify the group exists
+    if (groupId) {
+      const group = await prisma.group.findUnique({ where: { id: groupId } });
+      if (!group) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+    }
+
     const session = await prisma.session.create({
-      data: { name },
+      data: {
+        name,
+        groupId: groupId || null,
+      },
     });
 
     res.status(201).json(session);
@@ -23,9 +34,13 @@ export const createSession = async (req: Request, res: Response) => {
 
 export const getAllSessions = async (req: Request, res: Response) => {
   try {
+    const { groupId } = req.query;
+
     const sessions = await prisma.session.findMany({
+      where: groupId ? { groupId: groupId as string } : undefined,
       orderBy: { createdAt: 'desc' },
       include: {
+        group: true,
         _count: {
           select: {
             participants: true,
@@ -49,6 +64,7 @@ export const getSessionById = async (req: Request, res: Response) => {
     const session = await prisma.session.findUnique({
       where: { id },
       include: {
+        group: true,
         participants: true,
         items: {
           include: {

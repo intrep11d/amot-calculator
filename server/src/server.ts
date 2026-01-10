@@ -6,6 +6,7 @@ import participantRoutes from './routes/participantRoutes';
 import itemRoutes from './routes/itemRoutes';
 import settlementRoutes from './routes/settlementRoutes';
 import friendRoutes from './routes/friendRoutes';
+import groupRoutes from './routes/groupRoutes';
 
 dotenv.config();
 
@@ -26,6 +27,7 @@ app.use('/api/sessions', settlementRoutes);
 app.use('/api/participants', participantRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/friends', friendRoutes);
+app.use('/api/groups', groupRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

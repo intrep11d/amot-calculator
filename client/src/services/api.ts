@@ -8,6 +8,9 @@ import type {
   CreateItemData,
   Friend,
   FriendBalance,
+  Group,
+  GroupDetail,
+  GroupMember,
 } from '../types';
 
 const API_URL = 'http://localhost:5000/api';
@@ -20,9 +23,13 @@ const api = axios.create({
 });
 
 export const sessionApi = {
-  getAll: () => api.get<Session[]>('/sessions'),
+  getAll: (groupId?: string) => {
+    const url = groupId ? `/sessions?groupId=${groupId}` : '/sessions';
+    return api.get<Session[]>(url);
+  },
   getById: (id: string) => api.get<SessionDetail>(`/sessions/${id}`),
-  create: (name: string) => api.post<Session>('/sessions', { name }),
+  create: (name: string, groupId?: string) =>
+    api.post<Session>('/sessions', { name, groupId }),
   delete: (id: string) => api.delete(`/sessions/${id}`),
 };
 
@@ -55,4 +62,17 @@ export const friendApi = {
     api.put<Friend>(`/friends/${friendCode}`, { name }),
   getBalance: (friendCode: string) =>
     api.get<FriendBalance>(`/friends/${friendCode}/balance`),
+};
+
+export const groupApi = {
+  getAll: () => api.get<Group[]>('/groups'),
+  getById: (id: string) => api.get<GroupDetail>(`/groups/${id}`),
+  create: (name: string) => api.post<Group>('/groups', { name }),
+  update: (id: string, name: string) => api.put<Group>(`/groups/${id}`, { name }),
+  delete: (id: string) => api.delete(`/groups/${id}`),
+  getMembers: (groupId: string) => api.get<GroupMember[]>(`/groups/${groupId}/members`),
+  addMember: (groupId: string, friendCode: string) =>
+    api.post<GroupMember>(`/groups/${groupId}/members`, { friendCode }),
+  removeMember: (groupId: string, memberId: string) =>
+    api.delete(`/groups/${groupId}/members/${memberId}`),
 };

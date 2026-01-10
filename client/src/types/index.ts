@@ -6,11 +6,37 @@ export interface Friend {
   updatedAt: string;
 }
 
-export interface Session {
+export interface Group {
   id: string;
   name: string;
   createdAt: string;
   updatedAt: string;
+  _count?: {
+    members: number;
+    sessions: number;
+  };
+}
+
+export interface GroupMember {
+  id: string;
+  groupId: string;
+  friendId: string;
+  createdAt: string;
+  friend: Friend;
+}
+
+export interface GroupDetail extends Group {
+  members: GroupMember[];
+  sessions: Session[];
+}
+
+export interface Session {
+  id: string;
+  name: string;
+  groupId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  group?: Group | null;
   _count?: {
     participants: number;
     items: number;
